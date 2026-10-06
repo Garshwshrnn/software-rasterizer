@@ -1,4 +1,5 @@
 #include <SDL.h>
+
 #include <iostream>
 #include <vector>
 #include <cmath>
@@ -132,6 +133,119 @@ void WriteImageToFile(const vector<vector<float3>> image, const string filenameW
     }*/
 }
 
+const int WIDTH = 100, HEIGHT = 100;
+
+// RENDER
+/*void drawLine(int x0, int y0, int x1, int y1, Color color, std::vector<uint32_t>& buffer) {
+    int dx = std::abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+    int dy = -std::abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+    int err = dx + dy, e2;
+
+    while (true) {
+        if (x0 >= 0 && x0 < WIDTH && y0 >= 0 && y0 < HEIGHT) {
+            buffer[y0 * WIDTH + x0] = (color.a << 24) | (color.r << 16) | (color.g << 8) | color.b;
+        }
+        if (x0 == x1 && y0 == y1) break;
+        e2 = 2 * err;
+        if (e2 >= dy) { err += dy; x0 += sx; }
+        if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+}
+
+
+int main(int argc, char* argv[]) {
+    if (SDL_Init(SDL_INIT_VIDEO) < 0) return 1;
+
+    SDL_Window* window = SDL_CreateWindow("C++ Software Rasterizer", 
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH, HEIGHT, SDL_WINDOW_SHOWN);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    SDL_Texture* texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, WIDTH, HEIGHT);
+
+    vector<uint32_t> frameBuffer(WIDTH * HEIGHT, 0xFF000000);
+
+    // 1. Define 8 local space vertices of a 1x1x1 Cube centered at (0,0,0)
+    std::vector<float3> cubeVertices = {
+        {-0.5f, -0.5f, -0.5f}, { 0.5f, -0.5f, -0.5f}, { 0.5f,  0.5f, -0.5f}, {-0.5f,  0.5f, -0.5f},
+        {-0.5f, -0.5f,  0.5f}, { 0.5f, -0.5f,  0.5f}, { 0.5f,  0.5f,  0.5f}, {-0.5f,  0.5f,  0.5f}
+    };
+
+    // 2. Define the 12 connecting edges of the cube faces
+    std::vector<std::pair<int, int>> cubeEdges = {
+        {0, 1}, {1, 2}, {2, 3}, {3, 0}, // Front Face Edges
+        {4, 5}, {5, 6}, {6, 7}, {7, 4}, // Back Face Edges
+        {0, 4}, {1, 5}, {2, 6}, {3, 7}  // Connecting Edges
+    };
+
+    Color boxColor{100, 200, 255, 255}; // Light Blue
+    float angle = 0.0f;
+    bool isRunning = true;
+    SDL_Event event;
+
+    // --- Core Interactive Loop ---
+    while (isRunning) {
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT) isRunning = false;
+        }
+        Render();
+    }
+
+    SDL_DestroyTexture(texture);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return 0;
+}
+
+void Render(width, height, frameBuffer, projectedVertices, ){
+        // Clear Framebuffer to Black each frame
+    std::fill(frameBuffer.begin(), frameBuffer.end(), 0xFF000000);
+    angle += 0.01f; // Increment animation rotation angle
+
+    // Setup temporary screen projection space
+    std::vector<float2> projectedVertices(cubeVertices.size());
+
+    // 3. Process and project every vertex dynamically
+    for (size_t i = 0; i < cubeVertices.size(); ++i) {
+        float3 v = cubeVertices[i];
+
+        // Rotate around Y-axis
+        float x1 = v.x * std::cos(angle) - v.z * std::sin(angle);
+        float z1 = v.x * std::sin(angle) + v.z * std::cos(angle);
+        
+        // Rotate around X-axis
+        float y2 = v.y * std::cos(angle * 0.5f) - z1 * std::sin(angle * 0.5f);
+        float z2 = v.y * std::sin(angle * 0.5f) + z1 * std::cos(angle * 0.5f);
+
+        // Translate the box back away from the camera lens (Z offset)
+        float finalZ = z2 - 2.5f; 
+
+        // Perspective Projection Equation
+        float fov = 60.0f * M_PI / 180.0f;
+        float aspect = static_cast<float>(WIDTH) / HEIGHT;
+        float x_proj = x1 / (-finalZ * std::tan(fov / 2.0f));
+        float y_proj = y2 / (-finalZ * std::tan(fov / 2.0f) * aspect);
+
+        // Map Viewspace to Pixel Coordinates
+        projectedVertices[i].x = (x_proj + 1.0f) * 0.5f * WIDTH;
+        projectedVertices[i].y = (1.0f - y_proj) * 0.5f * HEIGHT;
+    }
+
+    // 4. Rasterize Edges onto our memory buffer
+    for (const auto& edge : cubeEdges) {
+        float2 p0 = projectedVertices[edge.first];
+        float2 p1 = projectedVertices[edge.second];
+        drawLine(static_cast<int>(p0.x), static_cast<int>(p0.y), 
+                    static_cast<int>(p1.x), static_cast<int>(p1.y), boxColor, frameBuffer);
+    }
+
+    // Display updated graphics memory onto standard SDL texture
+    SDL_UpdateTexture(texture, nullptr, frameBuffer.data(), WIDTH * sizeof(uint32_t));
+    SDL_RenderClear(renderer);
+    SDL_RenderCopy(renderer, texture, nullptr, nullptr);
+    SDL_RenderPresent(renderer);
+}
+*/
+
 // actual
 void CreateTestImage(){
     const int width = 64;
@@ -152,9 +266,142 @@ void CreateTestImage(){
     
     WriteImageToFile(image, "art.bmp");
 }
-
+/*
 int main(){
     CreateTestImage();
     cout << "image made succesffuly" << endl;
+    return 0;
+}*/
+int main(int argc, char *argv[])
+{
+
+    // returns zero on success else non-zero
+    if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
+        printf("error initializing SDL: %s\n", SDL_GetError());
+    }
+    SDL_Window* win = SDL_CreateWindow("GAME", // creates a window
+                                       SDL_WINDOWPOS_CENTERED,
+                                       SDL_WINDOWPOS_CENTERED,
+                                       1000, 1000, 0);
+
+    // triggers the program that controls
+    // your graphics hardware and sets flags
+    Uint32 render_flags = SDL_RENDERER_ACCELERATED;
+
+    // creates a renderer to render our images
+    SDL_Renderer* rend = SDL_CreateRenderer(win, -1, render_flags);
+
+    // creates a surface to load an image into the main memory
+    SDL_Surface* surface;
+
+    // please provide a path for your image
+    surface = SDL_LoadBMP("./art.bmp");
+
+    // loads image to our graphics hardware memory.
+    SDL_Texture* tex = SDL_CreateTextureFromSurface(rend, surface);
+    // clears main-memory
+    SDL_FreeSurface(surface);
+
+    // let us control our image position
+    // so that we can move it with our keyboard.
+    SDL_Rect dest;
+
+    // connects our texture with dest to control position
+    SDL_QueryTexture(tex, NULL, NULL, &dest.w, &dest.h);
+
+    // adjust height and width of our image box.
+    dest.w /= 6;
+    dest.h /= 6;
+
+    // sets initial x-position of object
+    dest.x = (1000 - dest.w) / 2;
+
+    // sets initial y-position of object
+    dest.y = (1000 - dest.h) / 2;
+
+    // controls animation loop
+    int close = 0;
+
+    // speed of box
+    int speed = 300;
+
+    // animation loop
+    while (!close) {
+        SDL_Event event;
+
+        // Events management
+        while (SDL_PollEvent(&event)) {
+            switch (event.type) {
+
+            case SDL_QUIT:
+                // handling of close button
+                close = 1;
+                break;
+
+            case SDL_KEYDOWN:
+                // keyboard API for key pressed
+                switch (event.key.keysym.scancode) {
+                case SDL_SCANCODE_W:
+                case SDL_SCANCODE_UP:
+                    dest.y -= speed / 30;
+                    break;
+                case SDL_SCANCODE_A:
+                case SDL_SCANCODE_LEFT:
+                    dest.x -= speed / 30;
+                    break;
+                case SDL_SCANCODE_S:
+                case SDL_SCANCODE_DOWN:
+                    dest.y += speed / 30;
+                    break;
+                case SDL_SCANCODE_D:
+                case SDL_SCANCODE_RIGHT:
+                    dest.x += speed / 30;
+                    break;
+                default:
+                    break;
+                }
+            }
+        }
+
+        // right boundary
+        if (dest.x + dest.w > 1000)
+            dest.x = 1000 - dest.w;
+
+        // left boundary
+        if (dest.x < 0)
+            dest.x = 0;
+
+        // bottom boundary
+        if (dest.y + dest.h > 1000)
+            dest.y = 1000 - dest.h;
+
+        // upper boundary
+        if (dest.y < 0)
+            dest.y = 0;
+
+        // clears the screen
+        SDL_RenderClear(rend);
+        SDL_RenderCopy(rend, tex, NULL, &dest);
+
+        // triggers the double buffers
+        // for multiple rendering
+        SDL_RenderPresent(rend);
+
+        // calculates to 60 fps
+        SDL_Delay(1000 / 60);
+    }
+
+    // destroy texture
+    SDL_DestroyTexture(tex);
+
+    // destroy renderer
+    SDL_DestroyRenderer(rend);
+
+    // destroy window
+    SDL_DestroyWindow(win);
+    
+    // close SDL
+    SDL_Quit();
+
     return 0;
 }
