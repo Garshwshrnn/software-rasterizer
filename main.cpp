@@ -1,11 +1,13 @@
-#include <SDL.h>
-
 #include <iostream>
-#include <vector>
 #include <cmath>
+#include <chrono>
+
+#include <vector>
 #include <algorithm>
 #include <fstream>
 #include <string>
+
+#include <SDL.h>
 
 using namespace std;
 
@@ -133,7 +135,9 @@ void WriteImageToFile(const vector<vector<float3>> image, const string filenameW
     }*/
 }
 
-const int WIDTH = 100, HEIGHT = 100;
+const int WIDTH = 600, HEIGHT = 400;
+bool isRasterizing = true;
+int frameCount = 0;
 
 // RENDER
 /*void drawLine(int x0, int y0, int x1, int y1, Color color, std::vector<uint32_t>& buffer) {
@@ -246,7 +250,7 @@ void Render(width, height, frameBuffer, projectedVertices, ){
 }
 */
 
-// actual
+// testing
 void CreateTestImage(){
     const int width = 64;
     const int height = 64;
@@ -267,12 +271,56 @@ void CreateTestImage(){
     WriteImageToFile(image, "art.bmp");
 }
 
-bool isRasterizing = true;
+// RENDER
+struct Framebuffer
+{
+    int width;
+    int height;
 
-void Render(SDL_Renderer* renderer){
-    SDL_RenderClear(renderer);
+    vector<uint32_t> pixels;
+
+    Framebuffer(int w, int h)
+        : width(w),
+          height(h),
+          pixels(w * h)
+    {
+    }
+
+    void clear(uint32_t color)
+    {
+        fill(pixels.begin(), pixels.end(), color);
+    }
+
+    void setPixel(int x, int y, uint32_t color)
+    {
+        if (x < 0 || x >= width ||
+            y < 0 || y >= height)
+            return;
+
+        pixels[y * width + x] = color;
+    }
+};
+
+void Render(SDL_Renderer* renderer, Framebuffer framebuffer, SDL_Texture* texture){
+    // Clear framebuffer
+    framebuffer.clear(
+        0xFF202020 //opaque very dark gray default color (AARRGGBB)
+    );
+
+    // Your software rasterizer goes here.
+    //
+    // rasterizeTriangle(...);
     //stuff to render e.g:
-        SDL_SetRenderDrawColor(renderer, 0,255,0,255);
+    
+    SDL_UpdateTexture(
+        texture,
+        nullptr,
+        framebuffer.pixels.data(),
+        WIDTH * sizeof(uint32_t)
+    );
+    
+    SDL_RenderClear(renderer);
+    SDL_RenderCopy(renderer, texture, nullptr, nullptr);
     SDL_RenderPresent(renderer);
 }
 void handleEvents(){
@@ -313,7 +361,21 @@ void handleEvents(){
         }
     }
 }
+
+auto startFrameTime = std::chrono::high_resolution_clock::now();
+auto endFrameTime = std::chrono::high_resolution_clock::now();
+double GetFrameTimeMs(){
+    startFrameTime = endFrameTime;
+    endFrameTime = std::chrono::high_resolution_clock::now();
+    double frameTimeMs =
+        std::chrono::duration<double, std::milli>(
+            endFrameTime - startFrameTime
+        ).count();
+    return frameTimeMs;
+}
+
 void Run(){
+    cout << "executing Run()" << endl;
     isRasterizing = true;
     bool isDone = true;
     int doneCounter = 0;
@@ -330,10 +392,22 @@ void Run(){
         SDL_WINDOWPOS_CENTERED,
         WIDTH, HEIGHT, flags);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, 0/*SDL_RENDERER_ACCELERATED?*/);
+    SDL_Texture* texture = SDL_CreateTexture(
+        renderer,
+        SDL_PIXELFORMAT_ARGB8888,/* pixel format is 8 bytes per RGBA (AARRGGBB) */
+        SDL_TEXTUREACCESS_STREAMING,/*continuous updates?*/
+        WIDTH, HEIGHT);
 
+    Framebuffer framebuffer(WIDTH, HEIGHT);
+
+    cout << "isRasterizing: " << isRasterizing << ", isDone: " << isDone << endl;
     while(isRasterizing && isDone){
-        Render(renderer);
+        cout << "Frame " << frameCount << " render time: " << GetFrameTimeMs() << "ms?" << '\n';
+        frameCount++;
+
+        Render(renderer, framebuffer, texture);
         handleEvents();
+
         if(false){
             doneCounter++;
             if(doneCounter>10000) isDone = false; 
@@ -348,6 +422,7 @@ void Run(){
 
 int main(int argc, char *argv[])
 {
+    cout << "Starting code!" << endl;
     Run();
     return 0;
 }
