@@ -9,7 +9,7 @@
 #include <string>
 #include <span>
 
-#include <SDL.h>
+
 
 using namespace std;
 
@@ -238,124 +238,6 @@ void drawTriangle(
     }
 }
 
-void Render(SDL_Renderer* renderer, Framebuffer framebuffer, SDL_Texture* texture, vector<float2>& points, vector<float2>& velocities, vector<float3>& triangleColors){
-    // Clear framebuffer
-    framebuffer.clear(
-        0xFF202020 //opaque very dark gray default color (AARRGGBB)
-    );
-
-    // Your software rasterizer goes here.
-    //
-    for(int y=0; y<HEIGHT; y++){
-        for(int x=0; x<WIDTH; x++){
-            for(size_t i=0; i<points.size(); i+=3){
-                float2 a(points[i+0]);
-                float2 b(points[i+1]);
-                float2 c(points[i+2]);
-                float2 p(x,y);
-
-                if (PointInTriangle(a,b,c,p)){
-                    framebuffer.setPixel(x,y,triangleColors[i/3].getARGB());
-                }
-            }
-        }
-    }
-    //stuff to render e.g:
-    
-    SDL_UpdateTexture(
-        texture,
-        nullptr,
-        framebuffer.pixels.data(),
-        WIDTH * sizeof(uint32_t)
-    );
-    
-    SDL_RenderClear(renderer);
-    SDL_RenderCopy(renderer, texture, nullptr, nullptr);
-    SDL_RenderPresent(renderer);
-}
-void handleEvents(){
-    SDL_Event event;
-    while (SDL_PollEvent(&event)) {
-        switch (event.type) {
-
-        case SDL_QUIT: // handling of close button
-            isRasterizing = false;
-            break;
-
-        case SDL_KEYDOWN:
-            // keyboard API for key pressed
-            /*
-            switch (event.key.keysym.scancode) {
-            case SDL_SCANCODE_W:
-            case SDL_SCANCODE_UP:
-                dest.y -= speed / 30;
-                break;
-            case SDL_SCANCODE_A:
-            case SDL_SCANCODE_LEFT:
-                dest.x -= speed / 30;
-                break;
-            case SDL_SCANCODE_S:
-            case SDL_SCANCODE_DOWN:
-                dest.y += speed / 30;
-                break;
-            case SDL_SCANCODE_D:
-            case SDL_SCANCODE_RIGHT:
-                dest.x += speed / 30;
-                break;
-            default:
-                break;
-            }*/
-           break;
-        default:
-            break;
-        }
-    }
-}
-void Run(vector<float2>& points, vector<float2>& velocities, vector<float3>& triangleColors){
-    cout << "executing Run()" << endl;
-    isRasterizing = true;
-    bool isDone = true;
-    int doneCounter = 0;
-
-    if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
-        printf("error initializing SDL: %s\n", SDL_GetError());
-    }
-    int flags = 0;
-    if(false/*make this if fullscreen*/){
-        flags = SDL_WINDOW_FULLSCREEN;
-    }
-    SDL_Window* window = SDL_CreateWindow("C++ Software Rasterizer?",
-        SDL_WINDOWPOS_CENTERED,
-        SDL_WINDOWPOS_CENTERED,
-        WIDTH, HEIGHT, flags);
-    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, 0/*SDL_RENDERER_ACCELERATED?*/);
-    SDL_Texture* texture = SDL_CreateTexture(
-        renderer,
-        SDL_PIXELFORMAT_ARGB8888,/* pixel format is 8 bytes per RGBA (AARRGGBB) */
-        SDL_TEXTUREACCESS_STREAMING,/*continuous updates?*/
-        WIDTH, HEIGHT);
-
-    Framebuffer framebuffer(WIDTH, HEIGHT);
-
-    cout << "isRasterizing: " << isRasterizing << ", isDone: " << isDone << endl;
-    while(isRasterizing && isDone){
-        cout << "Frame " << frameCount << " render time: " << GetFrameTimeMs() << "ms?" << '\n';
-        frameCount++;
-
-        Render(renderer, framebuffer, texture, points, velocities, triangleColors);
-        handleEvents();
-
-        if(false){
-            doneCounter++;
-            if(doneCounter>10000) isDone = false; 
-        }
-    };
-
-    SDL_DestroyTexture(texture);
-    SDL_DestroyWindow(window);
-    SDL_DestroyRenderer(renderer);
-    SDL_Quit();
-}
 
 
 
@@ -401,12 +283,38 @@ void CreateTestImages(){
         triangleColors.push_back(RandomColor(gen));
     }
 
-    Run(points, velocities, triangleColors);
+    
 }
 
-int main(int argc, char *argv[])
-{
-    cout << "Starting code!" << endl;
-    CreateTestImages();
+// ... keep all your structures, MATH FUNCS, and WriteImageToFile ...
+
+int main() {
+    const int WIDTH = 600;
+    const int HEIGHT = 400;
+
+    // Create a 2D image buffer for your WriteImageToFile function
+    // format: image[width][height]
+    vector<vector<float3>> image(WIDTH, vector<float3>(HEIGHT, float3(0.125f, 0.125f, 0.125f))); // Dark gray background
+
+    // Define a test triangle
+    float2 a(100, 100);
+    float2 b(500, 100);
+    float2 c(300, 300);
+    float3 triangleColor(1.0f, 0.0f, 0.0f); // Red
+
+    // Rasterize using your math logic
+    for (int x = 0; x < WIDTH; x++) {
+        for (int y = 0; y < HEIGHT; y++) {
+            float2 p(x, y);
+            if (PointInTriangle(a, b, c, p)) {
+                image[x][y] = triangleColor;
+            }
+        }
+    }
+
+    // Write to a file instead of a live SDL window
+    WriteImageToFile(image, "output.bmp");
+    cout << "Render complete! 'output.bmp' has been saved." << endl;
+
     return 0;
 }
