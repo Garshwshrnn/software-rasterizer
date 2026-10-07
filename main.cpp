@@ -9,7 +9,7 @@
 #include <string>
 #include <span>
 
-
+#include <SDL.h>
 
 using namespace std;
 
@@ -237,7 +237,169 @@ void drawTriangle(
         }
     }
 }
+vector<float2> MoveAndBouncePoint(float2 initial, float2 velocity, float minx, float miny, float maxx, float maxy) {
+    float2 result = initial + velocity;
+    float2 resultVel = velocity;
 
+    // Check and handle X-axis boundaries
+    if (result.x > maxx) {
+        result.x = maxx - (result.x - maxx); // Reflect position inside the box
+        resultVel.x = -velocity.x;           // Reverse velocity
+    } else if (result.x < minx) {
+        result.x = minx + (minx - result.x); // Reflect position inside the box
+        resultVel.x = -velocity.x;           // Reverse velocity
+    }
+
+    // Check and handle Y-axis boundaries
+    if (result.y > maxy) {
+        result.y = maxy - (result.y - maxy); // Reflect position inside the box
+        resultVel.y = -velocity.y;           // Reverse velocity
+    } else if (result.y < miny) {
+        result.y = miny + (miny - result.y); // Reflect position inside the box
+        resultVel.y = -velocity.y;           // Reverse velocity
+    }
+
+    vector<float2> res = {result, resultVel};
+    return res;
+}
+
+void Render(SDL_Renderer* renderer, Framebuffer framebuffer, SDL_Texture* texture, vector<float2>& points, vector<float2>& velocities, vector<float3>& triangleColors){
+    // Clear framebuffer
+    framebuffer.clear(
+        0xFF202020 //opaque very dark gray default color (AARRGGBB)
+    );
+
+    // stuff to render goes here
+    for(size_t i=0; i<points.size(); i+=3){
+        float2 a(points[i+0]);
+        float2 b(points[i+1]);
+        float2 c(points[i+2]);
+        //bounding boxes; limit the possible points that the thing is in so that rendering is more efficient
+        float minx = min(min(a.x, b.x), c.x);
+        float miny = min(min(a.y, b.y), c.y);
+        float maxx = max(max(a.x, b.x), c.x);
+        float maxy = max(max(a.y, b.y), c.y);
+        //AND make sure within bounding box of screen
+        int blockStartx = max(min((int)minx, WIDTH), 0);
+        int blockStarty = max(min((int)miny, HEIGHT), 0);
+        int blockEndx = max(min((int)maxx, WIDTH), 0);
+        int blockEndy = max(min((int)maxy, HEIGHT), 0);
+        
+        for(int y=blockStarty; y<blockEndy; y++){
+            for(int x=blockStartx; x<blockEndx; x++){
+                
+                float2 p(x,y);
+
+                if (PointInTriangle(a,b,c,p)){
+                    framebuffer.setPixel(x,y,triangleColors[i/3].getARGB());
+                }
+            }
+        }
+
+        //update positions due to velocity
+        for (int offset = 0; offset < 3; ++offset) {
+            int idx = i + offset;
+            auto res = MoveAndBouncePoint(points[idx], velocities[idx], 0,0,WIDTH, HEIGHT);
+            points[idx]     = res[0];
+            velocities[idx] = res[1];
+        }
+    }
+    // end of stuff to render
+    
+    SDL_UpdateTexture(
+        texture,
+        nullptr,
+        framebuffer.pixels.data(),
+        WIDTH * sizeof(uint32_t)
+    );
+    
+    SDL_RenderClear(renderer);
+    SDL_RenderCopy(renderer, texture, nullptr, nullptr);
+    SDL_RenderPresent(renderer);
+}
+void handleEvents(){
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+        switch (event.type) {
+
+        case SDL_QUIT: // handling of close button
+            isRasterizing = false;
+            break;
+
+        case SDL_KEYDOWN:
+            // keyboard API for key pressed
+            /*
+            switch (event.key.keysym.scancode) {
+            case SDL_SCANCODE_W:
+            case SDL_SCANCODE_UP:
+                dest.y -= speed / 30;
+                break;
+            case SDL_SCANCODE_A:
+            case SDL_SCANCODE_LEFT:
+                dest.x -= speed / 30;
+                break;
+            case SDL_SCANCODE_S:
+            case SDL_SCANCODE_DOWN:
+                dest.y += speed / 30;
+                break;
+            case SDL_SCANCODE_D:
+            case SDL_SCANCODE_RIGHT:
+                dest.x += speed / 30;
+                break;
+            default:
+                break;
+            }*/
+           break;
+        default:
+            break;
+        }
+    }
+}
+void Run(vector<float2>& points, vector<float2>& velocities, vector<float3>& triangleColors){
+    cout << "executing Run()" << endl;
+    isRasterizing = true;
+    bool isDone = true;
+    int doneCounter = 0;
+
+    if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
+        printf("error initializing SDL: %s\n", SDL_GetError());
+    }
+    int flags = 0;
+    if(false/*make this if fullscreen*/){
+        flags = SDL_WINDOW_FULLSCREEN;
+    }
+    SDL_Window* window = SDL_CreateWindow("C++ Software Rasterizer?",
+        SDL_WINDOWPOS_CENTERED,
+        SDL_WINDOWPOS_CENTERED,
+        WIDTH, HEIGHT, flags);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, 0/*SDL_RENDERER_ACCELERATED?*/);
+    SDL_Texture* texture = SDL_CreateTexture(
+        renderer,
+        SDL_PIXELFORMAT_ARGB8888,/* pixel format is 8 bytes per RGBA (AARRGGBB) */
+        SDL_TEXTUREACCESS_STREAMING,/*continuous updates?*/
+        WIDTH, HEIGHT);
+
+    Framebuffer framebuffer(WIDTH, HEIGHT);
+
+    cout << "isRasterizing: " << isRasterizing << ", isDone: " << isDone << endl;
+    while(isRasterizing && isDone){
+        cout << "Frame " << frameCount << " render time: " << GetFrameTimeMs() << "ms" << '\n';
+        frameCount++;
+
+        Render(renderer, framebuffer, texture, points, velocities, triangleColors);
+        handleEvents();
+
+        if(false){
+            doneCounter++;
+            if(doneCounter>10000) isDone = false; 
+        }
+    };
+
+    SDL_DestroyTexture(texture);
+    SDL_DestroyWindow(window);
+    SDL_DestroyRenderer(renderer);
+    SDL_Quit();
+}
 
 
 
@@ -256,7 +418,7 @@ float3 RandomColor(std::mt19937& gen) {
     return float3(distrib(gen), distrib(gen), distrib(gen));
 }
 void CreateTestImages(){
-    const int triangleCount = 10;
+    const int triangleCount = 40;
 
     //float2 points[triangleCount*3];
     vector<float2> points = {};
@@ -272,49 +434,23 @@ void CreateTestImages(){
 
     //generate points
     for (int i=0; i<triangleCount*3; i++){
-        points.push_back(halfSize + (RandomFloat2(gen, WIDTH, HEIGHT) - halfSize) * 0.3f);
+        points.push_back(halfSize + (RandomFloat2(gen, WIDTH, HEIGHT) - halfSize) * 0.5f);
     }
     //generate velocities and colors
-    for (int i=0; i<triangleCount; i+=3){
-        float2 velocity(RandomFloat2(gen, WIDTH, HEIGHT) * 0.5f);
+    for (int i=0; i<triangleCount; i++){
+        float2 velocity((RandomFloat2(gen, WIDTH/2, HEIGHT/2) - halfSize * 0.5) *0.05f);
         velocities.push_back(velocity);
         velocities.push_back(velocity);
         velocities.push_back(velocity);
         triangleColors.push_back(RandomColor(gen));
     }
 
-    
+    Run(points, velocities, triangleColors);
 }
 
-// ... keep all your structures, MATH FUNCS, and WriteImageToFile ...
-
-int main() {
-    const int WIDTH = 600;
-    const int HEIGHT = 400;
-
-    // Create a 2D image buffer for your WriteImageToFile function
-    // format: image[width][height]
-    vector<vector<float3>> image(WIDTH, vector<float3>(HEIGHT, float3(0.125f, 0.125f, 0.125f))); // Dark gray background
-
-    // Define a test triangle
-    float2 a(100, 100);
-    float2 b(500, 100);
-    float2 c(300, 300);
-    float3 triangleColor(1.0f, 0.0f, 0.0f); // Red
-
-    // Rasterize using your math logic
-    for (int x = 0; x < WIDTH; x++) {
-        for (int y = 0; y < HEIGHT; y++) {
-            float2 p(x, y);
-            if (PointInTriangle(a, b, c, p)) {
-                image[x][y] = triangleColor;
-            }
-        }
-    }
-
-    // Write to a file instead of a live SDL window
-    WriteImageToFile(image, "output.bmp");
-    cout << "Render complete! 'output.bmp' has been saved." << endl;
-
+int main(int argc, char *argv[])
+{
+    cout << "Starting code!" << endl;
+    CreateTestImages();
     return 0;
 }
