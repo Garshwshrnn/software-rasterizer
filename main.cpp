@@ -83,16 +83,31 @@ struct Framebuffer{
 
 // MATH FUNCS
 float Dot(float2 a, float2 b){ return a.x * b.x + a.y * b.y ;}
+float Dot(float ax, float ay, float bx, float by){ return ax * bx + ay * by ;}
 float2 Perpendicular(float2 vec) { return float2(vec.y, -vec.x);}
 bool PointOnRightSideOfLine(float2 a, float2 b, float2 p){
     float2 ap = p + -a;
     float2 abPerp = Perpendicular(b + -a);
     return Dot(ap, abPerp) >= 0;
 }
+bool PointOnRightSideOfLine(float ax, float ay, float bx, float by, float px, float py){
+    float apx = px - ax;
+    float apy = py - ay;
+    //simplified perpendicular
+    float abPerpx = by-ay;
+    float abPerpy = -bx+ax;
+    return Dot(apx, apy, abPerpx, abPerpy) >= 0;
+}
 bool PointInTriangle(float2 a, float2 b, float2 c, float2 p) {
     bool sideAB = PointOnRightSideOfLine(a,b,p);
     bool sideBC = PointOnRightSideOfLine(b,c,p);
     bool sideCA = PointOnRightSideOfLine(c,a,p);//make sure not AC
+    return sideAB == sideBC && sideBC == sideCA;
+}
+bool PointInTriangle(float ax, float ay, float bx, float by, float cx, float cy, float px, float py) {
+    bool sideAB = PointOnRightSideOfLine(ax,ay, bx,by, px,py);
+    bool sideBC = PointOnRightSideOfLine(bx,by, cx,cy, px,py);
+    bool sideCA = PointOnRightSideOfLine(cx,cy, ax,ay, px,py);//make sure not AC
     return sideAB == sideBC && sideBC == sideCA;
 }
     //random helpers
@@ -215,28 +230,11 @@ vector<float2> MoveAndBouncePoint(float2 initial, float2 velocity, float minx, f
     return res;
 }
 
-void drawTriangle(
-    Framebuffer& fb,
-    float2 a,
-    float2 b,
-    float2 c,
-    uint32_t color)
-{
-    int minX = static_cast<int>(
-        std::min({a.x, b.x, c.x})
-    );
-
-    int maxX = static_cast<int>(
-        std::max({a.x, b.x, c.x})
-    );
-
-    int minY = static_cast<int>(
-        std::min({a.y, b.y, c.y})
-    );
-
-    int maxY = static_cast<int>(
-        std::max({a.y, b.y, c.y})
-    );
+void drawTriangle(Framebuffer& fb, float2 a, float2 b, float2 c, uint32_t color) {
+    int minX = static_cast<int>(std::min({a.x, b.x, c.x}));
+    int maxX = static_cast<int>(std::max({a.x, b.x, c.x}));
+    int minY = static_cast<int>(std::min({a.y, b.y, c.y}));
+    int maxY = static_cast<int>(std::max({a.y, b.y, c.y}));
 
     minX = std::max(minX, 0);
     minY = std::max(minY, 0);
@@ -244,37 +242,16 @@ void drawTriangle(
     maxX = std::min(maxX, fb.width - 1);
     maxY = std::min(maxY, fb.height - 1);
 
-    float area =
-        (b.x - a.x) * (c.y - a.y) -
-        (b.y - a.y) * (c.x - a.x);
+    float area = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
 
-    if (area == 0.0f)
-        return;
+    if (area == 0.0f) return;
 
-    for (int y = minY; y <= maxY; ++y)
-    {
-        for (int x = minX; x <= maxX; ++x)
-        {
+    for (int y = minY; y <= maxY; ++y) {
+        for (int x = minX; x <= maxX; ++x) {
             float px = x + 0.5f;
             float py = y + 0.5f;
 
-            float w0 =
-                (b.x - a.x) * (py - a.y) -
-                (b.y - a.y) * (px - a.x);
-
-            float w1 =
-                (c.x - b.x) * (py - b.y) -
-                (c.y - b.y) * (px - b.x);
-
-            float w2 =
-                (a.x - c.x) * (py - c.y) -
-                (a.y - c.y) * (px - c.x);
-
-            if ((w0 >= 0 && w1 >= 0 && w2 >= 0) ||
-                (w0 <= 0 && w1 <= 0 && w2 <= 0))
-            {
-                fb.setPixel(x, y, color);
-            }
+            if(PointInTriangle(a.x,a.y, b.x,b.y, c.x,c.y, px,py)) fb.setPixel(x, y, color);
         }
     }
 }
@@ -282,10 +259,13 @@ void drawTriangle(
 void Render(SDL_Renderer* renderer, Framebuffer framebuffer, SDL_Texture* texture, vector<float2>& points, vector<float2>& velocities, vector<float3>& triangleColors){
     // Clear framebuffer
     framebuffer.clear(
-        0xFF202020 //opaque very dark gray default color (AARRGGBB)
+        0x00202020 //opaque very dark gray default color (AARRGGBB)
     );
 
     // stuff to render goes here
+    for(size_t i=0; i<points.size(); i+=3){
+        drawTriangle(framebuffer, points[i+0],points[i+1],points[i+2], triangleColors[i/3].getARGB());
+    /*}
     for(size_t i=0; i<points.size(); i+=3){
         float2 a(points[i+0]);
         float2 b(points[i+1]);
@@ -310,7 +290,7 @@ void Render(SDL_Renderer* renderer, Framebuffer framebuffer, SDL_Texture* textur
                     framebuffer.setPixel(x,y,triangleColors[i/3].getARGB());
                 }
             }
-        }
+        }*/
 
         //update positions due to velocity
         for (int offset = 0; offset < 3; ++offset) {
@@ -421,7 +401,7 @@ void Run(vector<float2>& points, vector<float2>& velocities, vector<float3>& tri
 
 // testing
 void CreateTestImages(){
-    const int triangleCount = 40;
+    const int triangleCount = 10;
 
     //float2 points[triangleCount*3];
     vector<float2> points = {};
