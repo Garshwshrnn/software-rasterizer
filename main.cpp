@@ -95,6 +95,20 @@ bool PointInTriangle(float2 a, float2 b, float2 c, float2 p) {
     bool sideCA = PointOnRightSideOfLine(c,a,p);//make sure not AC
     return sideAB == sideBC && sideBC == sideCA;
 }
+    //random helpers
+float2 RandomFloat2(std::mt19937& gen, float xmax, float ymax){
+    std::uniform_real_distribution<float> xDist(0.0f, xmax);
+    std::uniform_real_distribution<float> yDist(0.0f, ymax);
+
+    return float2(xDist(gen), yDist(gen));
+}
+float3 RandomColor(std::mt19937& gen) {
+    // Defines a uniform distribution between 0.0 and 1.0
+    std::uniform_real_distribution<float> distrib(0.0f, 1.0f);
+    
+    // Returns a float3 packed with random Red, Green, and Blue values
+    return float3(distrib(gen), distrib(gen), distrib(gen));
+}
 
 //TIME MANAGEMENT
 #include <chrono>
@@ -174,6 +188,33 @@ bool isRasterizing = true;
 int frameCount = 0;
 
 // RENDER
+    //helpers
+vector<float2> MoveAndBouncePoint(float2 initial, float2 velocity, float minx, float miny, float maxx, float maxy) {
+    float2 result = initial + velocity;
+    float2 resultVel = velocity;
+
+    // Check and handle X-axis boundaries
+    if (result.x > maxx) {
+        result.x = maxx - (result.x - maxx); // Reflect position inside the box
+        resultVel.x = -velocity.x;           // Reverse velocity
+    } else if (result.x < minx) {
+        result.x = minx + (minx - result.x); // Reflect position inside the box
+        resultVel.x = -velocity.x;           // Reverse velocity
+    }
+
+    // Check and handle Y-axis boundaries
+    if (result.y > maxy) {
+        result.y = maxy - (result.y - maxy); // Reflect position inside the box
+        resultVel.y = -velocity.y;           // Reverse velocity
+    } else if (result.y < miny) {
+        result.y = miny + (miny - result.y); // Reflect position inside the box
+        resultVel.y = -velocity.y;           // Reverse velocity
+    }
+
+    vector<float2> res = {result, resultVel};
+    return res;
+}
+
 void drawTriangle(
     Framebuffer& fb,
     float2 a,
@@ -236,31 +277,6 @@ void drawTriangle(
             }
         }
     }
-}
-vector<float2> MoveAndBouncePoint(float2 initial, float2 velocity, float minx, float miny, float maxx, float maxy) {
-    float2 result = initial + velocity;
-    float2 resultVel = velocity;
-
-    // Check and handle X-axis boundaries
-    if (result.x > maxx) {
-        result.x = maxx - (result.x - maxx); // Reflect position inside the box
-        resultVel.x = -velocity.x;           // Reverse velocity
-    } else if (result.x < minx) {
-        result.x = minx + (minx - result.x); // Reflect position inside the box
-        resultVel.x = -velocity.x;           // Reverse velocity
-    }
-
-    // Check and handle Y-axis boundaries
-    if (result.y > maxy) {
-        result.y = maxy - (result.y - maxy); // Reflect position inside the box
-        resultVel.y = -velocity.y;           // Reverse velocity
-    } else if (result.y < miny) {
-        result.y = miny + (miny - result.y); // Reflect position inside the box
-        resultVel.y = -velocity.y;           // Reverse velocity
-    }
-
-    vector<float2> res = {result, resultVel};
-    return res;
 }
 
 void Render(SDL_Renderer* renderer, Framebuffer framebuffer, SDL_Texture* texture, vector<float2>& points, vector<float2>& velocities, vector<float3>& triangleColors){
@@ -404,19 +420,6 @@ void Run(vector<float2>& points, vector<float2>& velocities, vector<float3>& tri
 
 
 // testing
-float2 RandomFloat2(std::mt19937& gen, float xmax, float ymax){
-    std::uniform_real_distribution<float> xDist(0.0f, xmax);
-    std::uniform_real_distribution<float> yDist(0.0f, ymax);
-
-    return float2(xDist(gen), yDist(gen));
-}
-float3 RandomColor(std::mt19937& gen) {
-    // Defines a uniform distribution between 0.0 and 1.0
-    std::uniform_real_distribution<float> distrib(0.0f, 1.0f);
-    
-    // Returns a float3 packed with random Red, Green, and Blue values
-    return float3(distrib(gen), distrib(gen), distrib(gen));
-}
 void CreateTestImages(){
     const int triangleCount = 40;
 
