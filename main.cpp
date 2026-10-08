@@ -7,6 +7,7 @@
 #include <vector>
 #include <fstream>
 #include <string>
+#include <sstream>
 #include <span>
 
 #include <SDL.h>
@@ -256,6 +257,82 @@ void drawTriangle(Framebuffer& fb, float2 a, float2 b, float2 c, uint32_t color)
     }
 }
 
+
+vector<string> SplitByLine(const string& str) { 
+    vector<string> lines; 
+    stringstream ss(str); 
+    string line; 
+    while (getline(ss, line)) { 
+        // Remove trailing carriage return '\r' if it's a Windows newline (\r\n) 
+        if (!line.empty() && line.back() == '\r') { 
+            line.pop_back(); 
+        } 
+        lines.push_back(line); 
+    } 
+    return lines; 
+} 
+
+std::vector<std::string> split(const std::string& s, char delimiter) {
+    std::vector<std::string> tokens;
+    size_t start = 0;
+    size_t end = s.find(delimiter);
+
+    while (end != std::string::npos) {
+        tokens.push_back(s.substr(start, end - start));
+        start = end + 1;
+        end = s.find(delimiter, start);
+    }
+    
+    // Add the remaining last token
+    tokens.push_back(s.substr(start));
+
+    return tokens;
+}
+// Highly inefficient and incomplete obj parser
+vector<float3> LoadObjFile(string objString) {
+    vector<float3> allPoints = {};
+    vector<float3> trianglePoints = {}; // each set of 3 points is a triangle
+
+    for(const std::string& line : SplitByLine(objString))
+    {
+        if (line.rfind("v ", 0) == 0) // vertex positions
+        {
+            vector<string> axes = split(line.substr(2),' ');
+            allPoints.push_back(float3(stof(axes[0]), stof(axes[1]), stof(axes[2])));
+        }
+        else if (line.rfind("f ", 0) == 0) // face indices
+        {
+            vector<string> faceIndexGroups = split(line.substr(2),' ');
+            
+            int tpsize = faceIndexGroups.size();
+            float3 firstVer, lastVer;
+            for (int i = 0; i < faceIndexGroups.size(); i++)
+            {
+                vector<string> indexGroup = split(faceIndexGroups[i],'/');
+                int pointIndex = stoi(indexGroup[0]) - 1; // subtract one since indices start at 1 in obj
+                if(tpsize>3){// n-gon triangle fan
+                    if(i==0) firstVer = allPoints[pointIndex]; //readd first vertex of prev triangle
+                    if(i==1) lastVer  = allPoints[pointIndex]; //readd last vertex of prev triangle
+                    if(i!=2){
+                        trianglePoints.push_back(firstVer);
+                        trianglePoints.push_back(lastVer);
+                    }
+                } 
+                trianglePoints.push_back(allPoints[pointIndex]);
+            }
+        }
+    }
+
+    return trianglePoints;
+}
+vector<float3> GenerateRandomTriangleColors(int numberOfColors){
+    vector<float3> list = {};
+    random_device rd; mt19937 gen(rd());
+    
+    for(int i=0; i<numberOfColors; i++) { list.push_back(RandomColor( gen));}
+
+    return list;
+}
 void Render(SDL_Renderer* renderer, Framebuffer framebuffer, SDL_Texture* texture, vector<float2>& points, vector<float2>& velocities, vector<float3>& triangleColors){
     // Clear framebuffer
     framebuffer.clear(
@@ -265,37 +342,11 @@ void Render(SDL_Renderer* renderer, Framebuffer framebuffer, SDL_Texture* textur
     // stuff to render goes here
     for(size_t i=0; i<points.size(); i+=3){
         drawTriangle(framebuffer, points[i+0],points[i+1],points[i+2], triangleColors[i/3].getARGB());
-    /*}
-    for(size_t i=0; i<points.size(); i+=3){
-        float2 a(points[i+0]);
-        float2 b(points[i+1]);
-        float2 c(points[i+2]);
-        //bounding boxes; limit the possible points that the thing is in so that rendering is more efficient
-        float minx = min(min(a.x, b.x), c.x);
-        float miny = min(min(a.y, b.y), c.y);
-        float maxx = max(max(a.x, b.x), c.x);
-        float maxy = max(max(a.y, b.y), c.y);
-        //AND make sure within bounding box of screen
-        int blockStartx = max(min((int)minx, WIDTH), 0);
-        int blockStarty = max(min((int)miny, HEIGHT), 0);
-        int blockEndx = max(min((int)maxx, WIDTH), 0);
-        int blockEndy = max(min((int)maxy, HEIGHT), 0);
-        
-        for(int y=blockStarty; y<blockEndy; y++){
-            for(int x=blockStartx; x<blockEndx; x++){
-                
-                float2 p(x,y);
-
-                if (PointInTriangle(a,b,c,p)){
-                    framebuffer.setPixel(x,y,triangleColors[i/3].getARGB());
-                }
-            }
-        }*/
 
         //update positions due to velocity
         for (int offset = 0; offset < 3; ++offset) {
             int idx = i + offset;
-            auto res = MoveAndBouncePoint(points[idx], velocities[idx], 0,0,WIDTH, HEIGHT);
+            auto res = MoveAndBouncePoint(points[idx], velocities[idx], 0,0, WIDTH,HEIGHT);
             points[idx]     = res[0];
             velocities[idx] = res[1];
         }
@@ -351,11 +402,16 @@ void handleEvents(){
         }
     }
 }
-void Run(vector<float2>& points, vector<float2>& velocities, vector<float3>& triangleColors){
+
+void Run(vector<float2>& points, vector<float3>& triangleColors, vector<float2>& velocities){
     cout << "executing Run()" << endl;
     isRasterizing = true;
     bool isDone = true;
     int doneCounter = 0;
+
+    if (velocities.empty()) {
+        velocities.assign(points.size(), float2{0.0f, 0.0f});
+    }
 
     if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
         printf("error initializing SDL: %s\n", SDL_GetError());
@@ -396,8 +452,15 @@ void Run(vector<float2>& points, vector<float2>& velocities, vector<float3>& tri
     SDL_DestroyRenderer(renderer);
     SDL_Quit();
 }
+void Run(vector<float3>& points, vector<float3>& triangleColors, vector<float2>& velocities){
+    vector<float2> points2 = {};
+    float mult = 70;
 
+    for (const float3& p : points)
+        points2.push_back(float2(p.x*mult-WIDTH/2.0f, p.y*mult-HEIGHT/2.0f));
 
+    Run(points2, triangleColors, velocities);
+}
 
 // testing
 void CreateTestImages(){
@@ -428,12 +491,61 @@ void CreateTestImages(){
         triangleColors.push_back(RandomColor(gen));
     }
 
-    Run(points, velocities, triangleColors);
+    Run(points, triangleColors, velocities);
+}
+void Testestestests(vector<float3>& points, vector<float3>& triangleColors, vector<float2>& velocities){
+    Run(points, triangleColors, velocities);
 }
 
 int main(int argc, char *argv[])
 {
     cout << "Starting code!" << endl;
-    CreateTestImages();
+    string cube = R"(
+o Cube
+v 1.000000 1.000000 -1.000000
+v 1.000000 -1.000000 -1.000000
+v 1.000000 1.000000 1.000000
+v 1.000000 -1.000000 1.000000
+v -1.000000 1.000000 -1.000000
+v -1.000000 -1.000000 -1.000000
+v -1.000000 1.000000 1.000000
+v -1.000000 -1.000000 1.000000
+vn -0.0000 1.0000 -0.0000
+vn -0.0000 -0.0000 1.0000
+vn -1.0000 -0.0000 -0.0000
+vn -0.0000 -1.0000 -0.0000
+vn 1.0000 -0.0000 -0.0000
+vn -0.0000 -0.0000 -1.0000
+vt 0.625000 0.500000
+vt 0.875000 0.500000
+vt 0.875000 0.750000
+vt 0.625000 0.750000
+vt 0.375000 0.750000
+vt 0.625000 1.000000
+vt 0.375000 1.000000
+vt 0.375000 0.000000
+vt 0.625000 0.000000
+vt 0.625000 0.250000
+vt 0.375000 0.250000
+vt 0.125000 0.500000
+vt 0.375000 0.500000
+vt 0.125000 0.750000
+s 0
+f 1/1/1 5/2/1 7/3/1 3/4/1
+f 4/5/2 3/4/2 7/6/2 8/7/2
+f 8/8/3 7/9/3 5/10/3 6/11/3
+f 6/12/4 2/13/4 4/5/4 8/14/4
+f 2/13/5 1/1/5 3/4/5 4/5/5
+f 6/11/6 5/10/6 1/1/6 2/13/6
+    )";
+    vector<float3> trianglePoints = LoadObjFile(cube);
+    vector<float3> randColors = GenerateRandomTriangleColors(trianglePoints.size()/3);
+    vector<float2> blank = {};
+    cout << "blank is empty: " << blank.empty() << endl;
+    for(int i=0; i<trianglePoints.size()/3; i++){
+        cout << trianglePoints[i].x << trianglePoints[i].y << trianglePoints[i].z << endl;
+    }
+    Run(trianglePoints, randColors, blank);
+    //CreateTestImages();
     return 0;
 }
