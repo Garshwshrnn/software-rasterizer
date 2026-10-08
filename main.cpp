@@ -81,6 +81,18 @@ struct Framebuffer{
         pixels[y * width + x] = color;
     }
 };
+struct Model{
+    vector<float3> trianglePoints;
+    vector<float3> triangleColors;
+    float3 velocity;
+
+    Model(vector<float3> tp, vector<float3> tc, float3 v)
+        : trianglePoints(tp),
+          triangleColors(tc),
+          velocity(v)
+    {
+    };
+};
 
 // MATH FUNCS
 float Dot(float2 a, float2 b){ return a.x * b.x + a.y * b.y ;}
@@ -201,6 +213,7 @@ void WriteImageToFile(const vector<vector<float3>> image, const string filenameW
 
 const int WIDTH = 600, HEIGHT = 400;
 bool isRasterizing = true;
+bool isPaused = false;
 int frameCount = 0;
 
 // RENDER
@@ -271,7 +284,6 @@ vector<string> SplitByLine(const string& str) {
     } 
     return lines; 
 } 
-
 std::vector<std::string> split(const std::string& s, char delimiter) {
     std::vector<std::string> tokens;
     size_t start = 0;
@@ -333,7 +345,12 @@ vector<float3> GenerateRandomTriangleColors(int numberOfColors){
 
     return list;
 }
-void Render(SDL_Renderer* renderer, Framebuffer framebuffer, SDL_Texture* texture, vector<float2>& points, vector<float2>& velocities, vector<float3>& triangleColors){
+
+float2 WorldToScreen(float3 point){
+    return float2(point.x, point.y);
+}
+
+void Render(SDL_Renderer* renderer, Framebuffer framebuffer, SDL_Texture* texture, vector<float3>& points, vector<float2>& velocities, vector<float3>& triangleColors){
     // Clear framebuffer
     framebuffer.clear(
         0x00202020 //opaque very dark gray default color (AARRGGBB)
@@ -341,13 +358,15 @@ void Render(SDL_Renderer* renderer, Framebuffer framebuffer, SDL_Texture* textur
 
     // stuff to render goes here
     for(size_t i=0; i<points.size(); i+=3){
-        drawTriangle(framebuffer, points[i+0],points[i+1],points[i+2], triangleColors[i/3].getARGB());
+        drawTriangle(framebuffer, 
+            WorldToScreen(points[i+0]),WorldToScreen(points[i+1]),WorldToScreen(points[i+2]), 
+            triangleColors[i/3].getARGB());
 
         //update positions due to velocity
         for (int offset = 0; offset < 3; ++offset) {
             int idx = i + offset;
-            auto res = MoveAndBouncePoint(points[idx], velocities[idx], 0,0, WIDTH,HEIGHT);
-            points[idx]     = res[0];
+            auto res = MoveAndBouncePoint(WorldToScreen(points[idx]), velocities[idx], 0,0, WIDTH,HEIGHT);
+            WorldToScreen(points[idx]) = res[0];
             velocities[idx] = res[1];
         }
     }
@@ -364,7 +383,7 @@ void Render(SDL_Renderer* renderer, Framebuffer framebuffer, SDL_Texture* textur
     SDL_RenderCopy(renderer, texture, nullptr, nullptr);
     SDL_RenderPresent(renderer);
 }
-void handleEvents(){
+void handleEvents(SDL_Renderer* renderer, Framebuffer framebuffer, SDL_Texture* texture, vector<float3>& points, vector<float2>& velocities, vector<float3>& triangleColors){
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         switch (event.type) {
@@ -375,27 +394,25 @@ void handleEvents(){
 
         case SDL_KEYDOWN:
             // keyboard API for key pressed
-            /*
             switch (event.key.keysym.scancode) {
-            case SDL_SCANCODE_W:
-            case SDL_SCANCODE_UP:
-                dest.y -= speed / 30;
+            case SDL_SCANCODE_SPACE:
+                isPaused = !isPaused; // Toggle pause state
+                cout << (isPaused ? "⏸️ Paused" : "▶️ Resumed") << endl;
                 break;
-            case SDL_SCANCODE_A:
-            case SDL_SCANCODE_LEFT:
-                dest.x -= speed / 30;
+                
+            case SDL_SCANCODE_F:
+                if (isPaused) {
+                    // Temporarily unpause for exactly one iteration
+                    cout << "🎞️ Stepping forward 1 frame..." << endl;
+                    cout << "Frame " << frameCount << " render time: " << GetFrameTimeMs() << "ms" << '\n';
+                    frameCount++;
+                    Render(renderer, framebuffer, texture, points, velocities, triangleColors);
+                }
                 break;
-            case SDL_SCANCODE_S:
-            case SDL_SCANCODE_DOWN:
-                dest.y += speed / 30;
-                break;
-            case SDL_SCANCODE_D:
-            case SDL_SCANCODE_RIGHT:
-                dest.x += speed / 30;
-                break;
+                
             default:
                 break;
-            }*/
+            }
            break;
         default:
             break;
@@ -403,7 +420,7 @@ void handleEvents(){
     }
 }
 
-void Run(vector<float2>& points, vector<float3>& triangleColors, vector<float2>& velocities){
+void Run(vector<float3>& points, vector<float3>& triangleColors, vector<float2>& velocities){
     cout << "executing Run()" << endl;
     isRasterizing = true;
     bool isDone = true;
@@ -433,13 +450,15 @@ void Run(vector<float2>& points, vector<float3>& triangleColors, vector<float2>&
 
     Framebuffer framebuffer(WIDTH, HEIGHT);
 
-    cout << "isRasterizing: " << isRasterizing << ", isDone: " << isDone << endl;
+    cout << "isRasterizing: " << isRasterizing << ", isDone: " << isDone << ", isPaused: " << isPaused << endl;
     while(isRasterizing && isDone){
-        cout << "Frame " << frameCount << " render time: " << GetFrameTimeMs() << "ms" << '\n';
-        frameCount++;
-
-        Render(renderer, framebuffer, texture, points, velocities, triangleColors);
-        handleEvents();
+        
+        if(!isPaused){
+            cout << "Frame " << frameCount << " render time: " << GetFrameTimeMs() << "ms" << '\n';
+            frameCount++;
+            Render(renderer, framebuffer, texture, points, velocities, triangleColors);
+        }
+        handleEvents(renderer, framebuffer, texture, points, velocities, triangleColors);
 
         if(false){
             doneCounter++;
@@ -452,14 +471,13 @@ void Run(vector<float2>& points, vector<float3>& triangleColors, vector<float2>&
     SDL_DestroyRenderer(renderer);
     SDL_Quit();
 }
-void Run(vector<float3>& points, vector<float3>& triangleColors, vector<float2>& velocities){
-    vector<float2> points2 = {};
-    float mult = 70;
+void Run(Model model){
+    vector<float3> points = model.trianglePoints;
+    vector<float3> triangleColors = model.triangleColors;
+    vector<float2> velocities;
+    velocities.assign(points.size(), float2(model.velocity.x,model.velocity.y));
 
-    for (const float3& p : points)
-        points2.push_back(float2(p.x*mult-WIDTH/2.0f, p.y*mult-HEIGHT/2.0f));
-
-    Run(points2, triangleColors, velocities);
+    Run(points, triangleColors, velocities);
 }
 
 // testing
@@ -491,7 +509,7 @@ void CreateTestImages(){
         triangleColors.push_back(RandomColor(gen));
     }
 
-    Run(points, triangleColors, velocities);
+    //Run(points, triangleColors, velocities);
 }
 void Testestestests(vector<float3>& points, vector<float3>& triangleColors, vector<float2>& velocities){
     Run(points, triangleColors, velocities);
@@ -500,7 +518,10 @@ void Testestestests(vector<float3>& points, vector<float3>& triangleColors, vect
 int main(int argc, char *argv[])
 {
     cout << "Starting code!" << endl;
-    string cube = R"(
+    
+    string cube;
+    if(1==1){
+        cube = R"(
 o Cube
 v 1.000000 1.000000 -1.000000
 v 1.000000 -1.000000 -1.000000
@@ -537,15 +558,17 @@ f 8/8/3 7/9/3 5/10/3 6/11/3
 f 6/12/4 2/13/4 4/5/4 8/14/4
 f 2/13/5 1/1/5 3/4/5 4/5/5
 f 6/11/6 5/10/6 1/1/6 2/13/6
-    )";
+        )";
+    }
+    
     vector<float3> trianglePoints = LoadObjFile(cube);
     vector<float3> randColors = GenerateRandomTriangleColors(trianglePoints.size()/3);
-    vector<float2> blank = {};
-    cout << "blank is empty: " << blank.empty() << endl;
+    /*cout << "blank is empty: " << blank.empty() << endl;
     for(int i=0; i<trianglePoints.size()/3; i++){
         cout << trianglePoints[i].x << trianglePoints[i].y << trianglePoints[i].z << endl;
-    }
-    Run(trianglePoints, randColors, blank);
-    //CreateTestImages();
+    }*/
+    Model cubeModel = Model(trianglePoints, randColors, float3(0.0f,0.0f,0.0f));
+    Run(cubeModel);
+
     return 0;
 }
