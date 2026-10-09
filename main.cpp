@@ -303,8 +303,9 @@ vector<float3> LoadObjFile(string objString) {
 
 
 const int WIDTH = 600, HEIGHT = 400;
+const float FOCAL_L = 0.5f;
 bool isRasterizing = true;
-bool isPaused = true, stepRequested = false;
+bool isPaused = false, stepRequested = false;
 int frameCount = 0;
 
 // RENDER
@@ -361,6 +362,7 @@ void drawTriangle(Framebuffer& fb, float2 a, float2 b, float2 c, uint32_t color)
 }
 
 class Transform{
+public:
     float Yaw; // Rotation around y axis
 
     float3 ToWorldPoint(float3 p)
@@ -369,6 +371,7 @@ class Transform{
         return TransformVector(hats[0], hats[1], hats[2], p);
     }
 
+private:
     // Calculate right/up/forward vectors (i, ĵ, k)
     vector<float3> GetBasisVectors()
     {
@@ -385,16 +388,24 @@ class Transform{
         return ihat * v.x + jhat * v.y + khat * v.z ;
     }
 };
-
-float2 WorldToScreen(float3 point){
+float3 WorldToScreen(const float3& point, float focalLength, Transform transform, float width, float height) {
     float pixelsPerWorldUnit = 70;
-
-        //add halfscreen to center
-    float2 pixelCoords = float2(point.x*pixelsPerWorldUnit + WIDTH/2.0f, point.y*pixelsPerWorldUnit+HEIGHT/2.0f);
-    //cout << "(" << pixelCoords.x << "," << pixelCoords.y << ")\n";
     
-    return pixelCoords;
+    float3 worldPoint = transform.ToWorldPoint(point);
+    // If the point is behind or too close to the camera, return an invalid sentinel point
+    if (abs(worldPoint.z) <= 0.1f) return { float3(0.0f, 0.0f, -1.0f) }; 
+
+    float projectedX = (worldPoint.x * pixelsPerWorldUnit * focalLength) / worldPoint.z;
+    float projectedY = (worldPoint.y * pixelsPerWorldUnit * focalLength) / worldPoint.z;
+
+    float3 outScreen;
+    outScreen.x = (width / 2.0f) + projectedX;
+    outScreen.y = (height / 2.0f) + projectedY; // Invert Y? because screen Y goes down
+    outScreen.z = worldPoint.z;                 // Keep original depth for Z-buffering
+
+    return outScreen;
 }
+
 
 void PreRender(Framebuffer& framebuffer){
     // Clear framebuffer
@@ -423,10 +434,24 @@ void PresentFramebuffer(SDL_Renderer* renderer, Framebuffer& framebuffer, SDL_Te
 void Render(SDL_Renderer* renderer, Framebuffer& framebuffer, SDL_Texture* texture, vector<float3>& points, vector<float2>& velocities, vector<float3>& triangleColors){
     PreRender(framebuffer);
 
+    Transform pitch;
+    auto now = std::chrono::high_resolution_clock::now();
+
+    // Convert the time_point into a duration (seconds) since the epoch, then call .count()
+    float seconds_since_epoch = std::chrono::duration<float>(now.time_since_epoch()).count();
+
+    pitch.Yaw = 0.1f * seconds_since_epoch;
+
     // stuff to render goes here
     for(size_t i=0; i<points.size(); i+=3){
+
+        float3 pixA = WorldToScreen(points[i+0], FOCAL_L, pitch, WIDTH, HEIGHT);
+        float3 pixB = WorldToScreen(points[i+1], FOCAL_L, pitch, WIDTH, HEIGHT);
+        float3 pixC = WorldToScreen(points[i+2], FOCAL_L, pitch, WIDTH, HEIGHT);
         drawTriangle(framebuffer, 
-            WorldToScreen(points[i+0]),WorldToScreen(points[i+1]),WorldToScreen(points[i+2]), 
+            float2(pixA.x,pixA.y),
+            float2(pixB.x,pixB.y),
+            float2(pixC.x,pixC.y),
             triangleColors[i/3].getARGB());
 
         //update positions due to velocity
