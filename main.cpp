@@ -31,6 +31,13 @@ struct float3 {
 
         return (a << 24) | (red << 16) | (green << 8) | blue;
     }
+
+    float3 operator*(float scalar) const {
+        return float3(x * scalar, y * scalar, z * scalar);
+    }
+    float3 operator+(float3 other) const {
+        return float3(x + other.x, y + other.y, z + other.z);
+    }
 };
 struct float2 {
     float x, y;
@@ -123,6 +130,36 @@ bool PointInTriangle(float ax, float ay, float bx, float by, float cx, float cy,
     bool sideCA = PointOnRightSideOfLine(cx,cy, ax,ay, px,py);//make sure not AC
     return sideAB == sideBC && sideBC == sideCA;
 }
+    //string helpers
+vector<string> SplitByLine(const string& str) { 
+    vector<string> lines; 
+    stringstream ss(str); 
+    string line; 
+    while (getline(ss, line)) { 
+        // Remove trailing carriage return '\r' if it's a Windows newline (\r\n) 
+        if (!line.empty() && line.back() == '\r') { 
+            line.pop_back(); 
+        } 
+        lines.push_back(line); 
+    } 
+    return lines; 
+} 
+std::vector<std::string> split(const std::string& s, char delimiter) {
+    std::vector<std::string> tokens;
+    size_t start = 0;
+    size_t end = s.find(delimiter);
+
+    while (end != std::string::npos) {
+        tokens.push_back(s.substr(start, end - start));
+        start = end + 1;
+        end = s.find(delimiter, start);
+    }
+    
+    // Add the remaining last token
+    tokens.push_back(s.substr(start));
+
+    return tokens;
+}
     //random helpers
 float2 RandomFloat2(std::mt19937& gen, float xmax, float ymax){
     std::uniform_real_distribution<float> xDist(0.0f, xmax);
@@ -136,6 +173,22 @@ float3 RandomColor(std::mt19937& gen) {
     
     // Returns a float3 packed with random Red, Green, and Blue values
     return float3(distrib(gen), distrib(gen), distrib(gen));
+}
+float3 RandomColor() {
+    random_device rd; mt19937 gen(rd());
+    // Defines a uniform distribution between 0.0 and 1.0
+    std::uniform_real_distribution<float> distrib(0.0f, 1.0f);
+    
+    // Returns a float3 packed with random Red, Green, and Blue values
+    return float3(distrib(gen), distrib(gen), distrib(gen));
+}
+vector<float3> GenerateRandomTriangleColors(int numberOfColors){
+    vector<float3> list = {};
+    random_device rd; mt19937 gen(rd());
+    
+    for(int i=0; i<numberOfColors; i++) { list.push_back(RandomColor( gen));}
+
+    return list;
 }
 
 //TIME MANAGEMENT
@@ -152,7 +205,7 @@ double GetFrameTimeMs(){
     return frameTimeMs;
 }
 
-// IMG TO FILE
+// FILE MANAGEMENT
 void WriteImageToFile(const vector<vector<float3>> image, const string filenameWithType){
     // Open file in binary mode
     std::ofstream writer(filenameWithType, std::ios::binary);
@@ -209,11 +262,48 @@ void WriteImageToFile(const vector<vector<float3>> image, const string filenameW
         }
     }    
 }
+    // Highly inefficient and incomplete obj parser
+vector<float3> LoadObjFile(string objString) {
+    vector<float3> allPoints = {};
+    vector<float3> trianglePoints = {}; // each set of 3 points is a triangle
+
+    for(const std::string& line : SplitByLine(objString))
+    {
+        if (line.rfind("v ", 0) == 0) // vertex positions
+        {
+            vector<string> axes = split(line.substr(2),' ');
+            allPoints.push_back(float3(stof(axes[0]), stof(axes[1]), stof(axes[2])));
+        }
+        else if (line.rfind("f ", 0) == 0) // face indices
+        {
+            vector<string> faceIndexGroups = split(line.substr(2),' ');
+            
+            int tpsize = faceIndexGroups.size();
+            float3 firstVer, lastVer;
+            for (int i = 0; i < faceIndexGroups.size(); i++)
+            {
+                vector<string> indexGroup = split(faceIndexGroups[i],'/');
+                int pointIndex = stoi(indexGroup[0]) - 1; // subtract one since indices start at 1 in obj
+                if(tpsize>3){// n-gon triangle fan
+                    if(i==0) firstVer = allPoints[pointIndex]; //readd first vertex of prev triangle
+                    if(i==1) lastVer  = allPoints[pointIndex]; //readd last vertex of prev triangle
+                    if(i>2){
+                        trianglePoints.push_back(firstVer);
+                        trianglePoints.push_back(lastVer);
+                    }
+                } 
+                trianglePoints.push_back(allPoints[pointIndex]);
+            }
+        }
+    }
+
+    return trianglePoints;
+}
 
 
 const int WIDTH = 600, HEIGHT = 400;
 bool isRasterizing = true;
-bool isPaused = false;
+bool isPaused = true, stepRequested = false;
 int frameCount = 0;
 
 // RENDER
@@ -243,7 +333,6 @@ vector<float2> MoveAndBouncePoint(float2 initial, float2 velocity, float minx, f
     vector<float2> res = {result, resultVel};
     return res;
 }
-
 void drawTriangle(Framebuffer& fb, float2 a, float2 b, float2 c, uint32_t color) {
     int minX = static_cast<int>(std::min({a.x, b.x, c.x}));
     int maxX = static_cast<int>(std::max({a.x, b.x, c.x}));
@@ -270,91 +359,56 @@ void drawTriangle(Framebuffer& fb, float2 a, float2 b, float2 c, uint32_t color)
     }
 }
 
+class Transform{
+    float Yaw; // Rotation around y axis
 
-vector<string> SplitByLine(const string& str) { 
-    vector<string> lines; 
-    stringstream ss(str); 
-    string line; 
-    while (getline(ss, line)) { 
-        // Remove trailing carriage return '\r' if it's a Windows newline (\r\n) 
-        if (!line.empty() && line.back() == '\r') { 
-            line.pop_back(); 
-        } 
-        lines.push_back(line); 
-    } 
-    return lines; 
-} 
-std::vector<std::string> split(const std::string& s, char delimiter) {
-    std::vector<std::string> tokens;
-    size_t start = 0;
-    size_t end = s.find(delimiter);
-
-    while (end != std::string::npos) {
-        tokens.push_back(s.substr(start, end - start));
-        start = end + 1;
-        end = s.find(delimiter, start);
-    }
-    
-    // Add the remaining last token
-    tokens.push_back(s.substr(start));
-
-    return tokens;
-}
-// Highly inefficient and incomplete obj parser
-vector<float3> LoadObjFile(string objString) {
-    vector<float3> allPoints = {};
-    vector<float3> trianglePoints = {}; // each set of 3 points is a triangle
-
-    for(const std::string& line : SplitByLine(objString))
+    float3 ToWorldPoint(float3 p)
     {
-        if (line.rfind("v ", 0) == 0) // vertex positions
-        {
-            vector<string> axes = split(line.substr(2),' ');
-            allPoints.push_back(float3(stof(axes[0]), stof(axes[1]), stof(axes[2])));
-        }
-        else if (line.rfind("f ", 0) == 0) // face indices
-        {
-            vector<string> faceIndexGroups = split(line.substr(2),' ');
-            
-            int tpsize = faceIndexGroups.size();
-            float3 firstVer, lastVer;
-            for (int i = 0; i < faceIndexGroups.size(); i++)
-            {
-                vector<string> indexGroup = split(faceIndexGroups[i],'/');
-                int pointIndex = stoi(indexGroup[0]) - 1; // subtract one since indices start at 1 in obj
-                if(tpsize>3){// n-gon triangle fan
-                    if(i==0) firstVer = allPoints[pointIndex]; //readd first vertex of prev triangle
-                    if(i==1) lastVer  = allPoints[pointIndex]; //readd last vertex of prev triangle
-                    if(i!=2){
-                        trianglePoints.push_back(firstVer);
-                        trianglePoints.push_back(lastVer);
-                    }
-                } 
-                trianglePoints.push_back(allPoints[pointIndex]);
-            }
-        }
+        vector<float3> hats = GetBasisVectors();
+        return TransformVector(hats[0], hats[1], hats[2], p);
     }
 
-    return trianglePoints;
-}
-vector<float3> GenerateRandomTriangleColors(int numberOfColors){
-    vector<float3> list = {};
-    random_device rd; mt19937 gen(rd());
-    
-    for(int i=0; i<numberOfColors; i++) { list.push_back(RandomColor( gen));}
+    // Calculate right/up/forward vectors (i, ĵ, k)
+    vector<float3> GetBasisVectors()
+    {
+        float3 ihat = float3(cos(Yaw), 0, sin(Yaw));
+        float3 jhat = float3(0, 1, 0);
+        float3 khat = float3(-1*sin(Yaw), 0, cos(Yaw));
+        vector<float3> vec = {ihat, jhat, khat};
+        return vec;
+    }
 
-    return list;
-}
+    // Move each coordinate of given vector along the corresponding basis vector
+    float3 TransformVector(float3 ihat, float3 jhat, float3 khat, float3 v)
+    {
+        return ihat * v.x + jhat * v.y + khat * v.z ;
+    }
+};
 
 float2 WorldToScreen(float3 point){
-    return float2(point.x, point.y);
+    float pixelsPerWorldUnit = 70;
+
+        //add halfscreen to center
+    float2 pixelCoords = float2(point.x*pixelsPerWorldUnit + WIDTH/2.0f, point.y*pixelsPerWorldUnit+HEIGHT/2.0f);
+    //cout << "(" << pixelCoords.x << "," << pixelCoords.y << ")\n";
+    
+    return pixelCoords;
 }
 
-void Render(SDL_Renderer* renderer, Framebuffer framebuffer, SDL_Texture* texture, vector<float3>& points, vector<float2>& velocities, vector<float3>& triangleColors){
+void PreRender(Framebuffer& framebuffer){
     // Clear framebuffer
     framebuffer.clear(
         0x00202020 //opaque very dark gray default color (AARRGGBB)
     );
+}
+void PostRender(SDL_Renderer* renderer, Framebuffer& framebuffer, SDL_Texture* texture){
+    SDL_UpdateTexture(texture, nullptr, framebuffer.pixels.data(), framebuffer.width * sizeof(uint32_t));
+    SDL_RenderClear(renderer);
+    SDL_RenderCopy(renderer, texture, nullptr, nullptr);
+    SDL_RenderPresent(renderer);
+}
+void Render(SDL_Renderer* renderer, Framebuffer& framebuffer, SDL_Texture* texture, vector<float3>& points, vector<float2>& velocities, vector<float3>& triangleColors){
+    PreRender(framebuffer);
 
     // stuff to render goes here
     for(size_t i=0; i<points.size(); i+=3){
@@ -365,25 +419,16 @@ void Render(SDL_Renderer* renderer, Framebuffer framebuffer, SDL_Texture* textur
         //update positions due to velocity
         for (int offset = 0; offset < 3; ++offset) {
             int idx = i + offset;
-            auto res = MoveAndBouncePoint(WorldToScreen(points[idx]), velocities[idx], 0,0, WIDTH,HEIGHT);
-            WorldToScreen(points[idx]) = res[0];
+            auto res = MoveAndBouncePoint(float2(points[idx].x,points[idx].y), velocities[idx], 0,0, WIDTH,HEIGHT);
+            points[idx] = float3(res[0].x,res[0].y,0);
             velocities[idx] = res[1];
         }
     }
     // end of stuff to render
     
-    SDL_UpdateTexture(
-        texture,
-        nullptr,
-        framebuffer.pixels.data(),
-        WIDTH * sizeof(uint32_t)
-    );
-    
-    SDL_RenderClear(renderer);
-    SDL_RenderCopy(renderer, texture, nullptr, nullptr);
-    SDL_RenderPresent(renderer);
+    PostRender(renderer, framebuffer, texture);
 }
-void handleEvents(SDL_Renderer* renderer, Framebuffer framebuffer, SDL_Texture* texture, vector<float3>& points, vector<float2>& velocities, vector<float3>& triangleColors){
+void handleEvents(SDL_Renderer* renderer, Framebuffer& framebuffer, SDL_Texture* texture, vector<float3>& points, vector<float2>& velocities, vector<float3>& triangleColors){
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         switch (event.type) {
@@ -404,12 +449,57 @@ void handleEvents(SDL_Renderer* renderer, Framebuffer framebuffer, SDL_Texture* 
                 if (isPaused) {
                     // Temporarily unpause for exactly one iteration
                     cout << "🎞️ Stepping forward 1 frame..." << endl;
-                    cout << "Frame " << frameCount << " render time: " << GetFrameTimeMs() << "ms" << '\n';
-                    frameCount++;
-                    Render(renderer, framebuffer, texture, points, velocities, triangleColors);
+                    stepRequested = true;
                 }
                 break;
                 
+            case SDL_SCANCODE_L:
+            {
+                cout << "[L] draw triangle\n";
+                PreRender(framebuffer);
+
+                uint32_t color = RandomColor().getARGB();
+        
+                drawTriangle(framebuffer, 
+                        float2(10.0f,10.0f),float2(10.0f,20.0f),float2(20.0f,10.0f), 
+                        color);
+                
+                float2 a = float2(10.0f,10.0f);
+                float2 b = float2(10.0f,20.0f);
+                float2 c = float2(20.0f,10.0f);
+
+                int minX = static_cast<int>(std::min({a.x, b.x, c.x}));
+                int maxX = static_cast<int>(std::max({a.x, b.x, c.x}));
+                int minY = static_cast<int>(std::min({a.y, b.y, c.y}));
+                int maxY = static_cast<int>(std::max({a.y, b.y, c.y}));
+
+                minX = std::max(minX, 0);
+                minY = std::max(minY, 0);
+
+                maxX = std::min(maxX, framebuffer.width - 1);
+                maxY = std::min(maxY, framebuffer.height - 1);
+
+                cout << "min: (" << minX << "," << minY << ") max: (" << maxX << "," << maxY << ")\n";
+
+                float area = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+
+                if (area == 0.0f) {return; cout<<"exit; area = 0\n";}
+
+                for (int y = minY; y <= maxY; ++y) {
+                    for (int x = minX; x <= maxX; ++x) {
+                        float px = x + 0.5f;
+                        float py = y + 0.5f;
+
+                        if(PointInTriangle(a.x,a.y, b.x,b.y, c.x,c.y, px,py)){
+                            cout << (y-minY)*(maxX-minX) + (x-minX) << "#("<<x<<","<<y<<") setting pixels\n";
+                            framebuffer.setPixel(x, y, color);
+                        }
+                    }
+                }
+                PostRender(renderer,framebuffer,texture);
+            }
+                break;
+
             default:
                 break;
             }
@@ -450,13 +540,52 @@ void Run(vector<float3>& points, vector<float3>& triangleColors, vector<float2>&
 
     Framebuffer framebuffer(WIDTH, HEIGHT);
 
+    
+    if(1==0){
+        uint32_t color = RandomColor().getARGB();
+        
+        drawTriangle(framebuffer, 
+                float2(10.0f,10.0f),float2(10.0f,20.0f),float2(20.0f,10.0f), 
+                color);
+        
+        float2 a = float2(10.0f,10.0f);
+        float2 b = float2(10.0f,20.0f);
+        float2 c = float2(20.0f,10.0f);
+
+        int minX = static_cast<int>(std::min({a.x, b.x, c.x}));
+        int maxX = static_cast<int>(std::max({a.x, b.x, c.x}));
+        int minY = static_cast<int>(std::min({a.y, b.y, c.y}));
+        int maxY = static_cast<int>(std::max({a.y, b.y, c.y}));
+
+        minX = std::max(minX, 0);
+        minY = std::max(minY, 0);
+
+        maxX = std::min(maxX, framebuffer.width - 1);
+        maxY = std::min(maxY, framebuffer.height - 1);
+
+        float area = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+
+        if (area == 0.0f) {return; cout<<"exit; area = 0\n";}
+
+        for (int y = minY; y <= maxY; ++y) {
+            for (int x = minX; x <= maxX; ++x) {
+                float px = x + 0.5f;
+                float py = y + 0.5f;
+
+                if(PointInTriangle(a.x,a.y, b.x,b.y, c.x,c.y, px,py)) framebuffer.setPixel(x, y, color);
+            }
+        }
+    }
+
     cout << "isRasterizing: " << isRasterizing << ", isDone: " << isDone << ", isPaused: " << isPaused << endl;
     while(isRasterizing && isDone){
         
-        if(!isPaused){
+        if(!isPaused || stepRequested){
             cout << "Frame " << frameCount << " render time: " << GetFrameTimeMs() << "ms" << '\n';
-            frameCount++;
             Render(renderer, framebuffer, texture, points, velocities, triangleColors);
+            
+            frameCount++;
+            stepRequested = false;
         }
         handleEvents(renderer, framebuffer, texture, points, velocities, triangleColors);
 
@@ -477,41 +606,6 @@ void Run(Model model){
     vector<float2> velocities;
     velocities.assign(points.size(), float2(model.velocity.x,model.velocity.y));
 
-    Run(points, triangleColors, velocities);
-}
-
-// testing
-void CreateTestImages(){
-    const int triangleCount = 10;
-
-    //float2 points[triangleCount*3];
-    vector<float2> points = {};
-    vector<float2> velocities = {};
-    vector<float3> triangleColors = {};
-
-    float2 halfSize(WIDTH/2.0f, HEIGHT/2.0f);
-    
-        random_device rd;
-        mt19937 gen(rd());
-        /*uniform_real_distribution<double> distrib(0.0, 1.0);
-    double rng = distrib(gen);*/
-
-    //generate points
-    for (int i=0; i<triangleCount*3; i++){
-        points.push_back(halfSize + (RandomFloat2(gen, WIDTH, HEIGHT) - halfSize) * 0.5f);
-    }
-    //generate velocities and colors
-    for (int i=0; i<triangleCount; i++){
-        float2 velocity((RandomFloat2(gen, WIDTH/2, HEIGHT/2) - halfSize * 0.5) *0.05f);
-        velocities.push_back(velocity);
-        velocities.push_back(velocity);
-        velocities.push_back(velocity);
-        triangleColors.push_back(RandomColor(gen));
-    }
-
-    //Run(points, triangleColors, velocities);
-}
-void Testestestests(vector<float3>& points, vector<float3>& triangleColors, vector<float2>& velocities){
     Run(points, triangleColors, velocities);
 }
 
@@ -563,10 +657,7 @@ f 6/11/6 5/10/6 1/1/6 2/13/6
     
     vector<float3> trianglePoints = LoadObjFile(cube);
     vector<float3> randColors = GenerateRandomTriangleColors(trianglePoints.size()/3);
-    /*cout << "blank is empty: " << blank.empty() << endl;
-    for(int i=0; i<trianglePoints.size()/3; i++){
-        cout << trianglePoints[i].x << trianglePoints[i].y << trianglePoints[i].z << endl;
-    }*/
+
     Model cubeModel = Model(trianglePoints, randColors, float3(0.0f,0.0f,0.0f));
     Run(cubeModel);
 
