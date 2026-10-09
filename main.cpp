@@ -280,16 +280,17 @@ vector<float3> LoadObjFile(string objString) {
             
             int tpsize = faceIndexGroups.size();
             float3 firstVer, lastVer;
-            for (int i = 0; i < faceIndexGroups.size(); i++)
+            for (int i = 0; i < tpsize; i++)
             {
                 vector<string> indexGroup = split(faceIndexGroups[i],'/');
                 int pointIndex = stoi(indexGroup[0]) - 1; // subtract one since indices start at 1 in obj
                 if(tpsize>3){// n-gon triangle fan
                     if(i==0) firstVer = allPoints[pointIndex]; //readd first vertex of prev triangle
-                    if(i==1) lastVer  = allPoints[pointIndex]; //readd last vertex of prev triangle
+                    if(i==2) lastVer  = allPoints[pointIndex]; //readd last vertex of prev triangle
                     if(i>2){
                         trianglePoints.push_back(firstVer);
                         trianglePoints.push_back(lastVer);
+                        if(i > 3) lastVer = allPoints[pointIndex];
                     }
                 } 
                 trianglePoints.push_back(allPoints[pointIndex]);
@@ -407,6 +408,18 @@ void PostRender(SDL_Renderer* renderer, Framebuffer& framebuffer, SDL_Texture* t
     SDL_RenderCopy(renderer, texture, nullptr, nullptr);
     SDL_RenderPresent(renderer);
 }
+void PresentFramebuffer(SDL_Renderer* renderer, Framebuffer& framebuffer, SDL_Texture* texture){
+    SDL_UpdateTexture(
+        texture,
+        nullptr,
+        framebuffer.pixels.data(),
+        framebuffer.width * sizeof(uint32_t)
+    );
+
+    SDL_RenderClear(renderer);
+    SDL_RenderCopy(renderer, texture, nullptr, nullptr);
+    SDL_RenderPresent(renderer);
+}
 void Render(SDL_Renderer* renderer, Framebuffer& framebuffer, SDL_Texture* texture, vector<float3>& points, vector<float2>& velocities, vector<float3>& triangleColors){
     PreRender(framebuffer);
 
@@ -417,6 +430,7 @@ void Render(SDL_Renderer* renderer, Framebuffer& framebuffer, SDL_Texture* textu
             triangleColors[i/3].getARGB());
 
         //update positions due to velocity
+        if(true) continue;
         for (int offset = 0; offset < 3; ++offset) {
             int idx = i + offset;
             auto res = MoveAndBouncePoint(float2(points[idx].x,points[idx].y), velocities[idx], 0,0, WIDTH,HEIGHT);
@@ -426,7 +440,8 @@ void Render(SDL_Renderer* renderer, Framebuffer& framebuffer, SDL_Texture* textu
     }
     // end of stuff to render
     
-    PostRender(renderer, framebuffer, texture);
+    PresentFramebuffer(renderer, framebuffer, texture);
+    //PostRender(renderer, framebuffer, texture);
 }
 void handleEvents(SDL_Renderer* renderer, Framebuffer& framebuffer, SDL_Texture* texture, vector<float3>& points, vector<float2>& velocities, vector<float3>& triangleColors){
     SDL_Event event;
@@ -496,7 +511,7 @@ void handleEvents(SDL_Renderer* renderer, Framebuffer& framebuffer, SDL_Texture*
                         }
                     }
                 }
-                PostRender(renderer,framebuffer,texture);
+                PresentFramebuffer(renderer,framebuffer,texture);
             }
                 break;
 
@@ -596,8 +611,8 @@ void Run(vector<float3>& points, vector<float3>& triangleColors, vector<float2>&
     };
 
     SDL_DestroyTexture(texture);
-    SDL_DestroyWindow(window);
     SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
     SDL_Quit();
 }
 void Run(Model model){
