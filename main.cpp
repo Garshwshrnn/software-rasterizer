@@ -204,6 +204,12 @@ double GetFrameTimeMs(){
         ).count();
     return frameTimeMs;
 }
+using Clock = std::chrono::steady_clock;
+
+static const auto start_time = Clock::now();
+static auto pause_start = Clock::now();
+
+float paused_seconds = 0.0f;
 
 // FILE MANAGEMENT
 void WriteImageToFile(const vector<vector<float3>> image, const string filenameWithType){
@@ -306,7 +312,7 @@ const int WIDTH = 600, HEIGHT = 400;
 const float FOCAL_L = 0.5f;
 bool isRasterizing = true;
 bool isPaused = false, stepRequested = false;
-int frameCount = 0;
+int frameCount = 0; float frameStepDuration = 0.1f;
 
 // RENDER
     //helpers
@@ -367,18 +373,17 @@ public:
 
     float3 ToWorldPoint(float3 p)
     {
-        vector<float3> hats = GetBasisVectors();
-        return TransformVector(hats[0], hats[1], hats[2], p);
+        return TransformVector(GetBasisVectors(1), GetBasisVectors(2), GetBasisVectors(3), p);
     }
 
 private:
     // Calculate right/up/forward vectors (i, ĵ, k)
-    vector<float3> GetBasisVectors()
+    float3 GetBasisVectors(int index)
     {
-        float3 ihat = float3(cos(Yaw), 0, sin(Yaw));
-        float3 jhat = float3(0, 1, 0);
-        float3 khat = float3(-1*sin(Yaw), 0, cos(Yaw));
-        vector<float3> vec = {ihat, jhat, khat};
+        float3 vec;
+        if(index == 1) vec = float3(cos(Yaw), 0, sin(Yaw));//i
+        if(index == 2) vec = float3(0, 1, 0);//j
+        if(index == 3) vec = float3(-1*sin(Yaw), 0, cos(Yaw));//k
         return vec;
     }
 
@@ -393,10 +398,10 @@ float3 WorldToScreen(const float3& point, float focalLength, Transform transform
     
     float3 worldPoint = transform.ToWorldPoint(point);
     // If the point is behind or too close to the camera, return an invalid sentinel point
-    if (abs(worldPoint.z) <= 0.1f) return { float3(0.0f, 0.0f, -1.0f) }; 
+    //if (abs(worldPoint.z) <= 0.1f) return { float3((width / 2.0f), (height / 2.0f), 0.0f) }; 
 
-    float projectedX = (worldPoint.x * pixelsPerWorldUnit * focalLength) / worldPoint.z;
-    float projectedY = (worldPoint.y * pixelsPerWorldUnit * focalLength) / worldPoint.z;
+    float projectedX = (worldPoint.x * pixelsPerWorldUnit * focalLength) ;// worldPoint.z;
+    float projectedY = (worldPoint.y * pixelsPerWorldUnit * focalLength) ;// worldPoint.z;
 
     float3 outScreen;
     outScreen.x = (width / 2.0f) + projectedX;
@@ -405,7 +410,6 @@ float3 WorldToScreen(const float3& point, float focalLength, Transform transform
 
     return outScreen;
 }
-
 
 void PreRender(Framebuffer& framebuffer){
     // Clear framebuffer
@@ -435,12 +439,14 @@ void Render(SDL_Renderer* renderer, Framebuffer& framebuffer, SDL_Texture* textu
     PreRender(framebuffer);
 
     Transform pitch;
-    auto now = std::chrono::high_resolution_clock::now();
+    float rotation_speed = 1.0f;
+    auto now = Clock::now();
+    float elapsed_seconds = std::chrono::duration<float>(
+        now - start_time
+    ).count();
+    float current_paused_seconds = paused_seconds;
+    pitch.Yaw = rotation_speed * (elapsed_seconds - current_paused_seconds);
 
-    // Convert the time_point into a duration (seconds) since the epoch, then call .count()
-    float seconds_since_epoch = std::chrono::duration<float>(now.time_since_epoch()).count();
-
-    pitch.Yaw = 0.1f * seconds_since_epoch;
 
     // stuff to render goes here
     for(size_t i=0; i<points.size(); i+=3){
@@ -482,13 +488,42 @@ void handleEvents(SDL_Renderer* renderer, Framebuffer& framebuffer, SDL_Texture*
             switch (event.key.keysym.scancode) {
             case SDL_SCANCODE_SPACE:
                 isPaused = !isPaused; // Toggle pause state
-                cout << (isPaused ? "⏸️ Paused" : "▶️ Resumed") << endl;
+                if(isPaused){
+                    cout << "⏸️ Paused" << endl;
+                    pause_start = Clock::now();
+                }
+                else{
+                    cout << "▶️ Resumed" << endl;
+                    paused_seconds += std::chrono::duration<float>(
+                        Clock::now() - pause_start
+                    ).count();
+                }
                 break;
                 
             case SDL_SCANCODE_F:
                 if (isPaused) {
                     // Temporarily unpause for exactly one iteration
                     cout << "🎞️ Stepping forward 1 frame..." << endl;
+
+                    paused_seconds += std::chrono::duration<float>(
+                        Clock::now() - pause_start
+                    ).count() - frameStepDuration;
+                    pause_start = Clock::now();
+                    
+                    stepRequested = true;
+                }
+                break;
+                
+            case SDL_SCANCODE_R:
+                if (isPaused) {
+                    // Temporarily unpause for exactly one iteration
+                    cout << "🎞️ Stepping backward 1 frame..." << endl;
+
+                    paused_seconds += std::chrono::duration<float>(
+                        Clock::now() - pause_start
+                    ).count() + frameStepDuration;
+                    pause_start = Clock::now();
+                    
                     stepRequested = true;
                 }
                 break;
