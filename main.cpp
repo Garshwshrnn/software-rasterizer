@@ -312,7 +312,7 @@ vector<float3> LoadObjFile(string objString) {
 const int WIDTH = 600, HEIGHT = 400;
 const float FOCAL_L = 0.5f;
 bool isRasterizing = true;
-bool isPaused = true, stepRequested = false;
+bool isPaused = false, stepRequested = false;
 int frameCount = 0; float frameStepDuration = 0.1f;
 
 // RENDER
@@ -372,20 +372,41 @@ void drawTriangle(Framebuffer& fb, float2 a, float2 b, float2 c, uint32_t color)
 class Transform{
 public:
     float Yaw; // Rotation around y axis
+    float Pitch; // Rotation around  axis
+    float3 Position;
 
-    float3 ToWorldPoint(float3 p)
+    Transform(float y=0.0f, float p=0.0f, float3 pos=float3(0,0,0)) {
+      Yaw = y;
+      Pitch = p;
+      Position = pos;
+    }
+
+    float3 ToWorldPoint(float3 pt)
     {
-        return TransformVector(GetBasisVectors(1), GetBasisVectors(2), GetBasisVectors(3), p);
+        return TransformVector(GetBasisVectors(1), GetBasisVectors(2), GetBasisVectors(3), pt) + Position;
     }
 
 private:
     // Calculate right/up/forward vectors (i, ĵ, k)
     float3 GetBasisVectors(int index)
     {
+        float3 ihat_yaw = float3(cos(Yaw), 0, sin(Yaw));
+        float3 jhat_yaw = float3(0, 1, 0);
+        float3 khat_yaw = float3(-1*sin(Yaw), 0, cos(Yaw));
+
         float3 vec;
-        if(index == 1) vec = float3(cos(Yaw), 0, sin(Yaw));//i
-        if(index == 2) vec = float3(0, 1, 0);//j
-        if(index == 3) vec = float3(-1*sin(Yaw), 0, cos(Yaw));//k
+        if(index == 1){//i
+            float3 ihat_pitch(1,0,0);
+            vec = TransformVector(ihat_yaw,jhat_yaw,khat_yaw, ihat_pitch);
+        }
+        if(index == 2){//j
+            float3 jhat_pitch(0, cos(Pitch), -1*sin(Pitch));
+            vec = TransformVector(ihat_yaw,jhat_yaw,khat_yaw, jhat_pitch);
+        } 
+        if(index == 3){//k
+            float3 khat_pitch(0, 1*sin(Pitch), cos(Pitch));
+            vec = TransformVector(ihat_yaw,jhat_yaw,khat_yaw, khat_pitch);
+        } 
         return vec;
     }
 
@@ -402,8 +423,8 @@ float3 WorldToScreen(const float3& point, float focalLength, Transform transform
     // If the point is behind or too close to the camera, return an invalid sentinel point
     //if (abs(worldPoint.z) <= 0.1f) return { float3((width / 2.0f), (height / 2.0f), 0.0f) }; 
 
-    float projectedX = (worldPoint.x * pixelsPerWorldUnit * focalLength) ;// worldPoint.z;
-    float projectedY = (worldPoint.y * pixelsPerWorldUnit * focalLength) ;// worldPoint.z;
+    float projectedX = (worldPoint.x * pixelsPerWorldUnit * focalLength) / worldPoint.z;
+    float projectedY = (worldPoint.y * pixelsPerWorldUnit * focalLength) / worldPoint.z;
 
     float3 outScreen;
     outScreen.x = (width / 2.0f) + projectedX;
@@ -440,22 +461,23 @@ void PresentFramebuffer(SDL_Renderer* renderer, Framebuffer& framebuffer, SDL_Te
 void Render(SDL_Renderer* renderer, Framebuffer& framebuffer, SDL_Texture* texture, vector<float3>& points, vector<float2>& velocities, vector<float3>& triangleColors){
     PreRender(framebuffer);
 
-    Transform pitch;
     float rotation_speed = 1.0f;
     auto now = Clock::now();
     float elapsed_seconds = std::chrono::duration<float>(
         now - start_time
     ).count();
     float current_paused_seconds = paused_seconds;
-    pitch.Yaw = rotation_speed * (elapsed_seconds - current_paused_seconds);
+    float yaw = rotation_speed * (elapsed_seconds - current_paused_seconds);
+    float pitch = 0.5f;
+    Transform transformation(pitch, yaw, float3(0,0,2));
 
 
     // stuff to render goes here
     for(size_t i=0; i<points.size(); i+=3){
 
-        float3 pixA = WorldToScreen(points[i+0], FOCAL_L, pitch, WIDTH, HEIGHT);
-        float3 pixB = WorldToScreen(points[i+1], FOCAL_L, pitch, WIDTH, HEIGHT);
-        float3 pixC = WorldToScreen(points[i+2], FOCAL_L, pitch, WIDTH, HEIGHT);
+        float3 pixA = WorldToScreen(points[i+0], FOCAL_L, transformation, WIDTH, HEIGHT);
+        float3 pixB = WorldToScreen(points[i+1], FOCAL_L, transformation, WIDTH, HEIGHT);
+        float3 pixC = WorldToScreen(points[i+2], FOCAL_L, transformation, WIDTH, HEIGHT);
         drawTriangle(framebuffer, 
             float2(pixA.x,pixA.y),
             float2(pixB.x,pixB.y),
