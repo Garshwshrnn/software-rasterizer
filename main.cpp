@@ -104,7 +104,7 @@ struct Model{
 // MATH FUNCS
 float Dot(float2 a, float2 b){ return a.x * b.x + a.y * b.y ;}
 float Dot(float ax, float ay, float bx, float by){ return ax * bx + ay * by ;}
-float2 Perpendicular(float2 vec) { return float2(vec.y, -vec.x);}
+float2 Perpendicular(float2 vec) { return float2(vec.y, -vec.x);}//clockwise
 bool PointOnRightSideOfLine(float2 a, float2 b, float2 p){
     float2 ap = p + -a;
     float2 abPerp = Perpendicular(b + -a);
@@ -118,17 +118,18 @@ bool PointOnRightSideOfLine(float ax, float ay, float bx, float by, float px, fl
     float abPerpy = -bx+ax;
     return Dot(apx, apy, abPerpx, abPerpy) >= 0;
 }
-bool PointInTriangle(float2 a, float2 b, float2 c, float2 p) {
+/*bool PointInTriangle(float2 a, float2 b, float2 c, float2 p) {
     bool sideAB = PointOnRightSideOfLine(a,b,p);
     bool sideBC = PointOnRightSideOfLine(b,c,p);
     bool sideCA = PointOnRightSideOfLine(c,a,p);//make sure not AC
-    return sideAB == sideBC && sideBC == sideCA;
-}
+    return sideAB && sideBC && sideCA;//backface culling
+}*/
+    //this float only version is like 4 times faster :sob:
 bool PointInTriangle(float ax, float ay, float bx, float by, float cx, float cy, float px, float py) {
     bool sideAB = PointOnRightSideOfLine(ax,ay, bx,by, px,py);
     bool sideBC = PointOnRightSideOfLine(bx,by, cx,cy, px,py);
     bool sideCA = PointOnRightSideOfLine(cx,cy, ax,ay, px,py);//make sure not AC
-    return sideAB == sideBC && sideBC == sideCA;
+    return sideAB && sideBC && sideCA;//backface culling
 }
     //string helpers
 vector<string> SplitByLine(const string& str) { 
@@ -311,7 +312,7 @@ vector<float3> LoadObjFile(string objString) {
 const int WIDTH = 600, HEIGHT = 400;
 const float FOCAL_L = 0.5f;
 bool isRasterizing = true;
-bool isPaused = false, stepRequested = false;
+bool isPaused = true, stepRequested = false;
 int frameCount = 0; float frameStepDuration = 0.1f;
 
 // RENDER
@@ -362,6 +363,7 @@ void drawTriangle(Framebuffer& fb, float2 a, float2 b, float2 c, uint32_t color)
             float px = x + 0.5f;
             float py = y + 0.5f;
 
+            //if(PointInTriangle(a, b, c, float2(px,py))) fb.setPixel(x, y, color);
             if(PointInTriangle(a.x,a.y, b.x,b.y, c.x,c.y, px,py)) fb.setPixel(x, y, color);
         }
     }
