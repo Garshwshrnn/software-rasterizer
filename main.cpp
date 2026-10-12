@@ -14,6 +14,8 @@
 
 using namespace std;
 
+const float NEGATIVE_INF = -99999999.9f;
+
 const int WIDTH = 600, HEIGHT = 400;
 const float degToRad = 3.14159265/180;
 const float FOCAL_L = 0.5f; float FOV = 90*degToRad;
@@ -95,6 +97,21 @@ struct Framebuffer{
         pixels[y * width + x] = color;
     }
 };
+struct RenderBuffer{
+    int width;
+    int height;
+
+    vector<vector<float3>> colorBuffer = {};
+    vector<vector<float>> depthBuffer = {};
+
+    RenderBuffer(int w, int h)
+        : width(w),
+          height(h),
+          colorBuffer(w, std::vector<float3>(h, float3{0.0f, 0.0f, 0.0f})), 
+          depthBuffer(w, std::vector<float>(h, NEGATIVE_INF))
+    {
+    };
+}
 struct Model{
     vector<float3> trianglePoints;
     vector<float3> triangleColors;
@@ -112,19 +129,6 @@ struct Model{
 float Dot(float2 a, float2 b){ return a.x * b.x + a.y * b.y ;}
 float Dot(float ax, float ay, float bx, float by){ return ax * bx + ay * by ;}
 float2 Perpendicular(float2 vec) { return float2(vec.y, -vec.x);}//clockwise
-bool PointOnRightSideOfLine(float2 a, float2 b, float2 p){
-    float2 ap = p + -a;
-    float2 abPerp = Perpendicular(b + -a);
-    return Dot(ap, abPerp) >= 0;
-}
-bool PointOnRightSideOfLine(float ax, float ay, float bx, float by, float px, float py){
-    float apx = px - ax;
-    float apy = py - ay;
-    //simplified perpendicular
-    float abPerpx = by-ay;
-    float abPerpy = -bx+ax;
-    return Dot(apx, apy, abPerpx, abPerpy) >= 0;
-}
 /*bool PointInTriangle(float2 a, float2 b, float2 c, float2 p) {
     bool sideAB = PointOnRightSideOfLine(a,b,p);
     bool sideBC = PointOnRightSideOfLine(b,c,p);
@@ -133,11 +137,23 @@ bool PointOnRightSideOfLine(float ax, float ay, float bx, float by, float px, fl
 }*/
     //this float only version is like 4 times faster :sob:
 bool PointInTriangle(float ax, float ay, float bx, float by, float cx, float cy, float px, float py) {
-    bool sideAB = PointOnRightSideOfLine(ax,ay, bx,by, px,py);
-    bool sideBC = PointOnRightSideOfLine(bx,by, cx,cy, px,py);
-    bool sideCA = PointOnRightSideOfLine(cx,cy, ax,ay, px,py);//make sure not AC
-    return sideAB && sideBC && sideCA;//backface culling
+    float areaABP = SignedTriangleArea(ax,ay, bx,by, px,py);
+    float areaBCP = SignedTriangleArea(bx,by, cx,cy, px,py);
+    float areaCAP = SignedTriangleArea(cx,cy, ax,ay, px,py);//make sure not AC
+
+    bool inTriangle = areaABP>=0 && areaBCP>=0 && areaCAP>=0;//backface culling
+
+    return inTriangle;
 }
+float SignedTriangleArea(float ax,float ay, float bx,float by, float cx,float cy){
+    float acx = cx -ax;
+    float acy = cy -ay;
+    //manual perpendicular func
+    float abPerpx = by-ay;
+    float abPerpy = -bx+ax;
+    return Dot(acx, acy, abPerpx,abPerpy)/2;
+}
+        //field of view
 float CalculateDollyZoomFov(float fovInit, float zPosInit, float zPosCur){
     float desiredHalfHeight = tan(fovInit/2) * zPosInit/zPosCur;
     return atan(desiredHalfHeight) * 2;
